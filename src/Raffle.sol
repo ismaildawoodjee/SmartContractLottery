@@ -11,6 +11,12 @@ import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/V
  * @dev Implements Chainlink VRFv2.5 (Verifiable Random Function)
  */
 contract Raffle is VRFConsumerBaseV2Plus {
+    /* TYPE DECLARATIONS */
+    enum RaffleState {
+        OPEN,
+        CALCULATING
+    }
+
     /* CONSTANTS */
     uint16 private constant REQUEST_CONFIRMATIONS = 3;
     uint32 private constant NUM_WORDS = 1;
@@ -25,6 +31,8 @@ contract Raffle is VRFConsumerBaseV2Plus {
 
     /* STATE VARIABLES */
     uint256 private s_lastRecordedTimeStamp; // The last timestamp that was recorded
+    address payable private s_recentRaffleWinner; // Most recent winner of the raffle
+    RaffleState private s_raffleState; // Current state of the Raffle, whether its OPEN or other states
     address payable[] private s_listOfPlayers; // List of players that entered the raffle - initialized to empty array
 
     /* EVENTS */
@@ -32,6 +40,8 @@ contract Raffle is VRFConsumerBaseV2Plus {
 
     /* ERRORS */
     error Raffle__NotEnoughEthToEnterRaffle();
+    error Raffle__FailedToSendRafflePrizeToWinner();
+    error Raffle__RaffleNotOpen();
 
     /* CONSTRUCTOR */
     /**
@@ -56,11 +66,13 @@ contract Raffle is VRFConsumerBaseV2Plus {
         i_callbackGasLimit = _callbackGasLimit;
         i_enableNativePayment = _enableNativePayment;
         s_lastRecordedTimeStamp = block.timestamp; // Initialized to when the contract is first deployed (first block)
+        s_raffleState = RaffleState.OPEN; // Raffle state should be OPEN when contract is first deployed
     }
 
     /* FUNCTIONS */
     function enterRaffle() external payable {
         if (msg.value < i_raffleEntranceFee) revert Raffle__NotEnoughEthToEnterRaffle();
+        if (s_raffleState != RaffleState.OPEN) revert Raffle__RaffleNotOpen();
 
         s_listOfPlayers.push(payable(msg.sender)); // Player is going to be the address that called this function
         emit NewPlayerHasEnteredRaffle(msg.sender);
@@ -78,9 +90,11 @@ contract Raffle is VRFConsumerBaseV2Plus {
     function pickRaffleWinner() external {
         //! I DONT LIKE THE WAY THIS FUNCTION DOES A LOT OF THINGS - refactor
         // We want to check to see if enough time has passed before picking the winner
-        if (block.timestamp - s_lastRecordedTimeStamp > i_lotteryDurationSeconds) {
+        if ((block.timestamp - s_lastRecordedTimeStamp) > i_lotteryDurationSeconds) {
             revert();
         }
+        s_raffleState = RaffleState.CALCULATING; // Can also be RaffleState(1), when picking out the winner
+
         // This is a request struct type that the `requestRandomWords` needs to get a requestId
         // This struct is defined in the `VRFV2PlusClient` library
         /**
@@ -102,7 +116,17 @@ contract Raffle is VRFConsumerBaseV2Plus {
         uint256 requestId = s_vrfCoordinator.requestRandomWords(request);
     }
 
-    function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal override {}
+    function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal override {
+        // This function is going to be called by the VRF service
+        uint256 indexOfWinner = randomWords[0] % s_listOfPlayers.length;
+        address payable raffleWinner = s_listOfPlayers[indexOfWinner];
+        s_recentRaffleWinner = raffleWinner;
+        s_raffleState = RaffleState.OPEN; // Reopen Raffle after the winner has been chosen, but before the prize is sent
+
+        // send prize money to raffle winner
+        (bool success,) = raffleWinner.call{value: address(this).balance}("");
+        if (!success) revert Raffle__FailedToSendRafflePrizeToWinner();
+    }
 
     /* GETTER FUNCTIONS */
     function getRaffleEntranceFee() external view returns (uint256) {
