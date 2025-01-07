@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
+import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
 
 /**
  * @title A sample Raffle contract
@@ -10,7 +11,7 @@ import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/V
  * @notice This contract is for creating a sample raffle
  * @dev Implements Chainlink VRFv2.5 (Verifiable Random Function)
  */
-contract Raffle is VRFConsumerBaseV2Plus {
+contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
     /* TYPE DECLARATIONS */
     enum RaffleState {
         OPEN,
@@ -37,17 +38,21 @@ contract Raffle is VRFConsumerBaseV2Plus {
 
     /* EVENTS */
     event NewPlayerHasEnteredRaffle(address indexed _newPlayer);
+    event RaffleWinnerPicked(address indexed _raffleWinner);
 
     /* ERRORS */
     error Raffle__NotEnoughEthToEnterRaffle();
     error Raffle__FailedToSendRafflePrizeToWinner();
     error Raffle__RaffleNotOpen();
+    error Raffle__UpkeepNotNeeded(uint256 _raffleBalance, uint256 _numPlayersInRaffle, RaffleState _raffleState);
 
     /* CONSTRUCTOR */
     /**
-     * Inherits from VRFConsumerBaseV2Plus, which has its own constructor, so we need to implement its parameters too
+     * Inherits from VRFConsumerBaseV2Plus, which has its own constructor, so we
+     * need to implement its parameters too
      * @param _vrfCoordinator address of VRFCoordinator contract
-     * We pass this parameter _vrfCoordinator from Raffle contract's constructor to VRFConsumerBaseV2Plus's constructor.
+     * We pass this parameter _vrfCoordinator from Raffle contract's constructor
+     * to VRFConsumerBaseV2Plus's constructor.
      * This way we also inherit the s_vrfCoordinator variable
      */
     constructor(
@@ -79,6 +84,35 @@ contract Raffle is VRFConsumerBaseV2Plus {
     }
 
     /**
+     * This is the function that the Chainlink nodes will call to see when and
+     * if the lottery is ready to have a winner picked. The following should be
+     * true in order for `upkeepNeeded` to be true:
+     * 1. The time interval (lottery duration) has passed between raffle runs
+     * 2. The lottery is open (RaffleState is OPEN)
+     * 3. The contract has non-zero ETH (check if players have entered raffle)
+     * 4. There are players registered in the raffle
+     * 5. Implicitly, the VRF Subscription is funded - has non-zero LINK or ETH
+     * @param - //checkData //? `calldata` type cannot be used. Why?
+     * @return upkeepNeeded (bool) - true if it's time to restart the lottery
+     * By returning `bool upkeepNeeded`, the return variable is already
+     * initialized to `false` and we can use it within the function
+     * @return - //performData
+     */
+    function checkUpkeep(bytes memory /* checkData */ )
+        public
+        view
+        override
+        returns (bool upkeepNeeded, bytes memory /* performData */ )
+    {
+        bool timeHasPassed = ((block.timestamp - s_lastRecordedTimeStamp) >= i_lotteryDurationSeconds);
+        bool isOpen = s_raffleState == RaffleState.OPEN;
+        bool raffleHasBalance = (address(this).balance > 0);
+        bool raffleHasPlayers = (s_listOfPlayers.length > 0);
+        upkeepNeeded = (timeHasPassed && isOpen && raffleHasBalance && raffleHasPlayers);
+        return (upkeepNeeded, "0x0");
+    }
+
+    /**
      * 1. This function needs to get a random number from VRF
      * 2. Then it needs to use the random number to pick out a winner
      * 3. Finally, it needs to be called automatically, at periodic intervals
@@ -87,17 +121,17 @@ contract Raffle is VRFConsumerBaseV2Plus {
      * 1. First, we send a transaction to request a random number from the subscription
      * 2. In the next transaction, we get that random number from the oracle
      */
-    function pickRaffleWinner() external {
-        //! I DONT LIKE THE WAY THIS FUNCTION DOES A LOT OF THINGS - refactor
-        // We want to check to see if enough time has passed before picking the winner
-        if ((block.timestamp - s_lastRecordedTimeStamp) > i_lotteryDurationSeconds) {
-            revert();
+    function performUpkeep(bytes calldata /* performData */ ) external override {
+        // If all conditions are met to perform upkeep, execute this function
+        (bool upkeepNeeded,) = checkUpkeep("");
+        if (!upkeepNeeded) {
+            revert Raffle__UpkeepNotNeeded(address(this).balance, s_listOfPlayers.length, s_raffleState);
         }
         s_raffleState = RaffleState.CALCULATING; // Can also be RaffleState(1), when picking out the winner
 
-        // This is a request struct type that the `requestRandomWords` needs to get a requestId
-        // This struct is defined in the `VRFV2PlusClient` library
         /**
+         * This is a request struct type that the `requestRandomWords` needs to get a requestId.
+         * This struct is defined in the `VRFV2PlusClient` library.
          * @param keyHash: Gas lane key hash value - the maximum gas price you're willing to pay for a request in wei.
          * @param subId: The subscription ID that this contract uses for funding requests.
          * @param requestConfirmations: How many confirmations the Chainlink node should wait before responding.
@@ -113,19 +147,23 @@ contract Raffle is VRFConsumerBaseV2Plus {
             numWords: NUM_WORDS,
             extraArgs: VRFV2PlusClient._argsToBytes(VRFV2PlusClient.ExtraArgsV1({nativePayment: i_enableNativePayment}))
         });
-        uint256 requestId = s_vrfCoordinator.requestRandomWords(request);
+        s_vrfCoordinator.requestRandomWords(request);
     }
 
-    function fulfillRandomWords(uint256 requestId, uint256[] calldata randomWords) internal override {
+    function fulfillRandomWords(uint256, /* requestId */ uint256[] calldata randomWords) internal override {
         // This function is going to be called by the VRF service
         uint256 indexOfWinner = randomWords[0] % s_listOfPlayers.length;
         address payable raffleWinner = s_listOfPlayers[indexOfWinner];
-        s_recentRaffleWinner = raffleWinner;
-        s_raffleState = RaffleState.OPEN; // Reopen Raffle after the winner has been chosen, but before the prize is sent
 
-        // send prize money to raffle winner
-        (bool success,) = raffleWinner.call{value: address(this).balance}("");
-        if (!success) revert Raffle__FailedToSendRafflePrizeToWinner();
+        s_recentRaffleWinner = raffleWinner;
+        s_listOfPlayers = new address payable[](0); // First, reset list of Raffle players.
+        s_lastRecordedTimeStamp = block.timestamp; // Then, update the last recorded timestamp. Finally, reopen raffle.
+        s_raffleState = RaffleState.OPEN; // Reopen Raffle after the winner has been chosen, but before the prize is sent
+        emit RaffleWinnerPicked(raffleWinner);
+
+        // Send prize money to raffle winner
+        (bool isSuccessfullyCalled,) = raffleWinner.call{value: address(this).balance}("");
+        if (!isSuccessfullyCalled) revert Raffle__FailedToSendRafflePrizeToWinner();
     }
 
     /* GETTER FUNCTIONS */
