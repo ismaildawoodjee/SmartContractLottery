@@ -122,14 +122,27 @@ contract RaffleTest is Test {
      * balance to remain at 0.
      */
     function test_CheckUpkeepReturnsFalse_IfRaffleHasNoBalance() public {
-        //? Arrange - is warping and rolling even needed?
-        vm.warp(block.timestamp + s_lotteryDurationSeconds + 1);
+        vm.warp(block.timestamp + s_lotteryDurationSeconds + 1); // Arrange
         vm.roll(block.number + 1);
-
         (bool upkeepNeeded,) = s_raffle.checkUpkeep(""); // Act
         assertEq(upkeepNeeded, false); // Assert
     }
 
-    // test_CheckUpkeepReturnsFalse_IfEnoughTimeHasPassed
-    // test_CheckUpkeepReturnsTrue_WhenParametersAreAllTrue
+    function test_CheckUpkeepReturnsFalse_IfEnoughTimeHasNotPassed() public {
+        vm.warp(block.timestamp + s_lotteryDurationSeconds - 1); // Arrange
+        vm.roll(block.number + 1);
+        (bool upkeepNeeded,) = s_raffle.checkUpkeep(""); // Act
+        assertEq(upkeepNeeded, false); // Assert
+    }
+
+    function test_CheckUpkeepReturnsTrue_WhenParametersAreAllTrue() public {
+        // Arrange
+        vm.prank(s_alice);
+        s_raffle.enterRaffle{value: s_raffleEntranceFee}();
+        vm.warp(block.timestamp + s_lotteryDurationSeconds + 1);
+        vm.roll(block.number + 1);
+
+        (bool upkeepNeeded,) = s_raffle.checkUpkeep(""); // Act
+        assertEq(upkeepNeeded, true); // Assert
+    }
 }
