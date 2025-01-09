@@ -10,4 +10,7 @@ abstract contract CodeConstants {
     /* Chain IDs */
     uint256 public constant ETH_SEPOLIA_CHAIN_ID = 11155111;
     uint256 public constant LOCAL_CHAIN_ID = 31337;
+
+    /* Funding Subscription */
+    uint256 public constant FUND_AMOUNT = 0.01 ether; // or 0.01 LINK
 }

@@ -178,4 +178,8 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
     function getLotteryDuration() external view returns (uint256) {
         return i_lotteryDurationSeconds;
     }
+
+    function getRaffleState() external view returns (RaffleState) {
+        return s_raffleState;
+    }
 }

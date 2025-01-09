@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Script, console2 as console} from "forge-std/Script.sol";
 import {CodeConstants} from "script/CodeConstants.s.sol";
 import {VRFCoordinatorV2_5Mock} from "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
+import {LinkToken} from "test/mocks/LinkToken.sol";
 
 /**
  * This contract helps set up the configuration for deploying the main contract.
@@ -24,6 +25,7 @@ contract HelperConfig is Script, CodeConstants {
         uint32 callbackGasLimit;
         bool enableNativePayment;
         address vrfCoordinator;
+        address linkTokenAddress;
     }
 
     /* STATE VARIABLES */
@@ -56,6 +58,14 @@ contract HelperConfig is Script, CodeConstants {
         revert HelperConfig__InvalidChainId(chainId);
     }
 
+    function getConfig() external returns (NetworkConfig memory) {
+        return getConfigByChainId(block.chainid);
+    }
+
+    /**
+     * Get Sepolia Testnet LINK token vrfCoordinator address from:
+     * https://docs.chain.link/resources/link-token-contracts#sepolia-testnet
+     */
     function getSepoliaEthConfig() public pure returns (NetworkConfig memory) {
         return NetworkConfig({
             raffleEntranceFee: 0.01 ether,
@@ -64,7 +74,8 @@ contract HelperConfig is Script, CodeConstants {
             subscriptionId: 45774321620783263106425965210246629145291358106998373738980325117999391332166,
             callbackGasLimit: 500_000, // 500,000 units of gas
             enableNativePayment: false, // use `false` to pay with LINK
-            vrfCoordinator: 0x9DdfaCa8183c41ad55329BdeeD9F6A8d53168B1B
+            vrfCoordinator: 0x9DdfaCa8183c41ad55329BdeeD9F6A8d53168B1B,
+            linkTokenAddress: 0x779877A7B0D9E8603169DdbD7836e478b4624789
         });
     }
 
@@ -84,6 +95,9 @@ contract HelperConfig is Script, CodeConstants {
          */
         VRFCoordinatorV2_5Mock vrfCoordinatorMock =
             new VRFCoordinatorV2_5Mock(MOCK_BASE_FEE, MOCK_GAS_PRICE_LINK, MOCK_WEI_PER_UNIT_LINK);
+
+        // Also deploy a mock LINK token using the LinkToken contract in `mocks`
+        LinkToken linkToken = new LinkToken();
         vm.stopBroadcast();
 
         s_activeNetworkConfig = NetworkConfig({
@@ -93,12 +107,9 @@ contract HelperConfig is Script, CodeConstants {
             subscriptionId: 0, // might have to fix this
             callbackGasLimit: 500_000, // 500,000 units of gas
             enableNativePayment: false, // use `false` to pay with LINK
-            vrfCoordinator: address(vrfCoordinatorMock)
+            vrfCoordinator: address(vrfCoordinatorMock),
+            linkTokenAddress: address(linkToken)
         });
         return s_activeNetworkConfig;
-    }
-
-    function getConfig() external returns (NetworkConfig memory) {
-        return getConfigByChainId(block.chainid);
     }
 }
