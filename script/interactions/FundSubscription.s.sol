@@ -8,7 +8,7 @@ import {VRFCoordinatorV2_5Mock} from "@chainlink/contracts/src/v0.8/vrf/mocks/VR
 import {LinkToken} from "test/mocks/LinkToken.sol";
 
 contract FundSubscription is Script, CodeConstants {
-    function run() external {
+    function run() public {
         fundSubscriptionUsingConfig();
     }
 

@@ -6,7 +6,7 @@ import {HelperConfig} from "script/HelperConfig.s.sol";
 import {VRFCoordinatorV2_5Mock} from "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
 
 contract CreateSubscription is Script {
-    function run() external returns (uint256) {
+    function run() public returns (uint256) {
         return createSubscriptionUsingConfig();
     }
 
