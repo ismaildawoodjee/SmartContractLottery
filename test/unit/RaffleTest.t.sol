@@ -25,6 +25,28 @@ contract RaffleTest is Test {
     bool s_enableNativePayment;
     address s_vrfCoordinator;
 
+    /* MODIFIERS */
+    /**
+     * This modifier simulates calling the `performUpkeep` function to put the Raffle
+     * state to `CALCULATING`, so that new players cannot enter while in that state.
+     * We ensure that `checkUpkeep` conditions are met:
+     * First, warp the current `block.timestamp` to a future value of
+     * `block.timestamp + s_lotteryDurationSeconds + 1` so that the condition
+     * for `timeHasPassed` is guaranteed to be met with 1 additional second:
+     * timeHasPassed = block.timestamp + s_lotteryDurationSeconds + 1 - block.timestamp
+     *               = s_lotteryDurationSeconds + 1 >= s_lotteryDurationSeconds
+     *               = true
+     * Also, simulate forwarding the block number by 1 with `vm.roll`.
+     */
+    modifier raffleStateCalculating() {
+        vm.prank(s_alice);
+        s_raffle.enterRaffle{value: s_raffleEntranceFee}(); // We have entered the raffle,
+        vm.warp(block.timestamp + s_lotteryDurationSeconds + 1); // time has passed,
+        vm.roll(block.number + 1); // and the block has been incremented.
+        s_raffle.performUpkeep(""); // Now, perform upkeep to set the Raffle state to CALCULATING
+        _;
+    }
+
     /* SETUP AND DEPLOYMENT FUNCTION */
     function setUp() external {
         DeployRaffle deployer = new DeployRaffle();
@@ -80,31 +102,34 @@ contract RaffleTest is Test {
         s_raffle.enterRaffle{value: s_raffleEntranceFee}(); // Assert
     }
 
-    /**
-     * This test simulates calling the `performUpkeep` function to put the Raffle
-     * state to `CALCULATING`, so that new players cannot enter while in that state.
-     * First, we ensure that `checkUpkeep` conditions are met:
-     * First, warp the current `block.timestamp` to a future value of
-     * `block.timestamp + s_lotteryDurationSeconds + 1` so that the condition
-     * for `timeHasPassed` is guaranteed to be met with 1 additional second:
-     * timeHasPassed = block.timestamp + s_lotteryDurationSeconds + 1 - block.timestamp
-     *               = s_lotteryDurationSeconds + 1 >= s_lotteryDurationSeconds
-     *               = true
-     * Also, simulate forwarding the block number by 1 with `vm.roll`.
-     */
-    function test_PlayerCannotEnterRaffle_WhenRaffleStateIsCalculating() public {
-        // Arrange
+    function test_PlayerCannotEnterRaffle_WhenRaffleStateIsCalculating() public raffleStateCalculating {
+        // Arrange - raffleStateCalculating: set RaffleState to CALCULATING
+        vm.expectRevert(Raffle.Raffle__RaffleNotOpen.selector); // Act
         vm.prank(s_alice);
-        s_raffle.enterRaffle{value: s_raffleEntranceFee}(); // We have entered the raffle,
-        vm.warp(block.timestamp + s_lotteryDurationSeconds + 1); // time has passed,
-        vm.roll(block.number + 1); // and the block has been incremented.
-        s_raffle.performUpkeep(""); // Now, perform upkeep to set the Raffle state to CALCULATING
-
-        // Act
-        vm.expectRevert(Raffle.Raffle__RaffleNotOpen.selector);
-        vm.prank(s_alice);
-
-        // Assert
-        s_raffle.enterRaffle{value: s_raffleEntranceFee}();
+        s_raffle.enterRaffle{value: s_raffleEntranceFee}(); // Assert
     }
+
+    /* TESTS FOR CHECKING UPKEEP */
+    function test_CheckUpkeepReturnsFalse_WhenRaffleStateIsCalculating() public raffleStateCalculating {
+        // Arrange - raffleStateCalculating: set RaffleState to CALCULATING
+        (bool upkeepNeeded,) = s_raffle.checkUpkeep(""); // Act
+        assertEq(upkeepNeeded, false); // Assert
+    }
+
+    /**
+     * Forward to a future time by `s_lotteryDurationSeconds + 1` and increment
+     * block by 1, but no player enters the raffle. This will ensure raffle
+     * balance to remain at 0.
+     */
+    function test_CheckUpkeepReturnsFalse_IfRaffleHasNoBalance() public {
+        //? Arrange - is warping and rolling even needed?
+        vm.warp(block.timestamp + s_lotteryDurationSeconds + 1);
+        vm.roll(block.number + 1);
+
+        (bool upkeepNeeded,) = s_raffle.checkUpkeep(""); // Act
+        assertEq(upkeepNeeded, false); // Assert
+    }
+
+    // test_CheckUpkeepReturnsFalse_IfEnoughTimeHasPassed
+    // test_CheckUpkeepReturnsTrue_WhenParametersAreAllTrue
 }
