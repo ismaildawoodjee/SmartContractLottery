@@ -8,6 +8,7 @@ import {HelperConfig} from "script/HelperConfig.s.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {VRFCoordinatorV2_5Mock} from "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
 import {CodeConstants} from "script/CodeConstants.s.sol";
+import {MockRevertingWinner} from "test/mocks/MockRevertingWinner.sol";
 
 contract RaffleTest is Test, CodeConstants {
     /* STATE VARIABLES */
@@ -54,8 +55,8 @@ contract RaffleTest is Test, CodeConstants {
         (s_raffle, s_helperConfig) = deployer.deployRaffleContract();
         HelperConfig.NetworkConfig memory networkConfig = s_helperConfig.getConfig();
 
-        s_raffleEntranceFee = networkConfig.raffleEntranceFee;
-        s_lotteryDurationSeconds = networkConfig.lotteryDurationSeconds;
+        s_raffleEntranceFee = s_raffle.getRaffleEntranceFee();
+        s_lotteryDurationSeconds = s_raffle.getLotteryDuration();
         s_keyHash = networkConfig.keyHash;
         s_subscriptionId = networkConfig.subscriptionId;
         s_callbackGasLimit = networkConfig.callbackGasLimit;
@@ -265,5 +266,35 @@ contract RaffleTest is Test, CodeConstants {
         assertEq(uint256(raffleState), uint256(Raffle.RaffleState.OPEN));
         assertEq(raffleWinnerBalance, winnerStartingBalance + totalPrizeMoney);
         assertGt(endingTimestamp, startingTimestamp + s_lotteryDurationSeconds);
+    }
+
+    function test_FulfillRandomWordsReverts_IfPrizeMoneyTransfer_IsUnsuccessful() public {
+        // Arrange - set up the mock winner that will revert when funds are sent
+        MockRevertingWinner mockWinner = new MockRevertingWinner();
+        address expectedWinner = address(mockWinner);
+        hoax(expectedWinner, 1 ether);
+        s_raffle.enterRaffle{value: s_raffleEntranceFee}();
+        vm.warp(block.timestamp + s_lotteryDurationSeconds + 1);
+        vm.roll(block.number + 1);
+
+        // Act - grab `requestId` and simulate calling the `fulfullRandomWords` function
+        vm.recordLogs();
+        s_raffle.performUpkeep("");
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        bytes32 requestId = entries[1].topics[1];
+
+        // Choose a random number that will select the mock winner (first player)
+        uint256[] memory randomWords = new uint256[](1);
+        randomWords[0] = 0;
+
+        // Assert - need to call `rawFulfillRandomWords` pranked with `s_vrfCoordinator`
+        // in order to prevent the `VRFCoordinatorV2_5Mock` from triggering its own error
+        vm.expectRevert(Raffle.Raffle__FailedToSendRafflePrizeToWinner.selector);
+        vm.prank(s_vrfCoordinator);
+        s_raffle.rawFulfillRandomWords(uint256(requestId), randomWords);
+
+        // Assert
+        // vm.expectRevert(Raffle.Raffle__FailedToSendRafflePrizeToWinner.selector);
+        // VRFCoordinatorV2_5Mock(s_vrfCoordinator).fulfillRandomWords(uint256(requestId), address(s_raffle));
     }
 }
