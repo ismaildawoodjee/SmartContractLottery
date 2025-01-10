@@ -12,5 +12,5 @@ abstract contract CodeConstants {
     uint256 public constant LOCAL_CHAIN_ID = 31337;
 
     /* Funding Subscription */
-    uint256 public constant FUND_AMOUNT = 0.01 ether; // or 0.01 LINK
+    uint256 public constant FUND_AMOUNT = 3 ether; // or 3 LINK
 }

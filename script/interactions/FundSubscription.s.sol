@@ -30,7 +30,7 @@ contract FundSubscription is Script, CodeConstants {
         // adding funds to the subscription
         vm.startBroadcast();
         if (block.chainid == LOCAL_CHAIN_ID) {
-            VRFCoordinatorV2_5Mock(_vrfCoordinator).fundSubscription(_subscriptionId, FUND_AMOUNT);
+            VRFCoordinatorV2_5Mock(_vrfCoordinator).fundSubscription(_subscriptionId, FUND_AMOUNT * 100);
         } else {
             LinkToken(_linkTokenAddress).transferAndCall(_vrfCoordinator, FUND_AMOUNT, abi.encode(_subscriptionId));
         }

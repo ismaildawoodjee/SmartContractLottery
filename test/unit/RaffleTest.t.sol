@@ -5,8 +5,11 @@ import {Test, console2 as console} from "forge-std/Test.sol";
 import {Raffle} from "src/Raffle.sol";
 import {DeployRaffle} from "script/DeployRaffle.s.sol";
 import {HelperConfig} from "script/HelperConfig.s.sol";
+import {Vm} from "forge-std/Vm.sol";
+import {VRFCoordinatorV2_5Mock} from "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
+import {CodeConstants} from "script/CodeConstants.s.sol";
 
-contract RaffleTest is Test {
+contract RaffleTest is Test, CodeConstants {
     /* STATE VARIABLES */
     /* CONTRACTS */
     Raffle public s_raffle;
@@ -169,7 +172,98 @@ contract RaffleTest is Test {
         s_raffle.performUpkeep(""); // Assert
     }
 
-    function test() public {
-        // Arrange
+    function test_PerformUpkeep_UpdatesRaffleState() public upkeepConditionsMet {
+        s_raffle.performUpkeep(""); // Arrange
+        assertEq(uint256(s_raffle.getRaffleState()), uint256(Raffle.RaffleState.CALCULATING)); // Act / Assert
+    }
+
+    function test_PerformUpkeep_EmitsRequestId() public upkeepConditionsMet {
+        // Arrange - ensure upkeep is needed using the `upkeepConditionsMet` modifier
+        // Act - start collecting logs and call the `performUpkeep` function
+        vm.recordLogs();
+        s_raffle.performUpkeep("");
+
+        /**
+         * This is a struct containing several fields:
+         * struct Log {
+         *     // The topics of the log, including the signature, if any.
+         *     bytes32[] topics;
+         *     // The raw data of the log.
+         *     bytes data;
+         *     // The address of the log's emitter.
+         *     address emitter;
+         * }
+         */
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+
+        /**
+         * The first entry is the event emitted by the vrfCoordinator
+         * The second entry will be the redundant event emitted by us (Raffle)
+         * ? The first topic is reserved. For what?
+         * The second topic is going to be the `requestId` that was emitted
+         */
+        bytes32 requestId = entries[1].topics[1];
+
+        // Assert
+        assertGt(uint256(requestId), 0);
+    }
+
+    /* TESTS FOR `fulfillRandomWords */
+    /**
+     * Fuzz Testing: We want to test all `requestId` integers, so we specify it
+     * as a parameter in the test (Stateless Fuzz Testing). Foundry will run the
+     * test with 256 (default number, this can be modified in `foundry.toml`)
+     * different random numbers.
+     */
+    function test_FulfillRandomWordsCanOnlyBeCalled_AfterPerformUpkeep(uint256 randomRequestId)
+        public
+        upkeepConditionsMet
+    {
+        // Arrange - we expect an InvalidRequest error when requestId doesn't exist
+        vm.expectRevert(VRFCoordinatorV2_5Mock.InvalidRequest.selector);
+
+        /**
+         * Act / Assert:
+         * Either instantiate the `VRFCoordinatorV2_5Mock` contract like in `HelperConfig`
+         * or recast the `s_vrfCoordinator` address to type `VRFCoordinatorV2_5Mock`.
+         * When you cast it, the compiler can properly identify the contract
+         * type and its error selectors. Without the cast, the compiler might
+         * not correctly recognize the error signatures from the mock contract.
+         */
+        VRFCoordinatorV2_5Mock(s_vrfCoordinator).fulfillRandomWords(randomRequestId, address(s_raffle));
+    }
+
+    function test_FulfillRandomWords_PicksAWinner_ResetsRaffle_AndSendsMoney() public upkeepConditionsMet {
+        // Arrange - set up three more raffle players and record the starting timestamp
+        uint256 numAdditionalPlayers = 3; // Total number of players: 4
+        uint256 startingIndex = 1;
+        address expectedWinner = address(1); //? Why is the expected winner address(1)?
+
+        for (uint256 i = startingIndex; i < startingIndex + numAdditionalPlayers; i++) {
+            address newPlayer = address(uint160(i)); // mock a player address
+            hoax(newPlayer, 1 ether); // prank player and deal starting balance
+            s_raffle.enterRaffle{value: s_raffleEntranceFee}();
+        }
+        uint256 startingTimestamp = s_raffle.getLastRecordedTimestamp();
+        uint256 winnerStartingBalance = expectedWinner.balance;
+
+        // Act - grab `requestId` and simulate calling the `fulfullRandomWords` function
+        vm.recordLogs();
+        s_raffle.performUpkeep("");
+        Vm.Log[] memory entries = vm.getRecordedLogs();
+        bytes32 requestId = entries[1].topics[1];
+        VRFCoordinatorV2_5Mock(s_vrfCoordinator).fulfillRandomWords(uint256(requestId), address(s_raffle));
+
+        // Assert
+        address recentRaffleWinner = s_raffle.getRecentRaffleWinner();
+        Raffle.RaffleState raffleState = s_raffle.getRaffleState();
+        uint256 raffleWinnerBalance = recentRaffleWinner.balance;
+        uint256 endingTimestamp = s_raffle.getLastRecordedTimestamp();
+        uint256 totalPrizeMoney = s_raffleEntranceFee * (1 + numAdditionalPlayers);
+
+        assertEq(recentRaffleWinner, expectedWinner);
+        assertEq(uint256(raffleState), uint256(Raffle.RaffleState.OPEN));
+        assertEq(raffleWinnerBalance, winnerStartingBalance + totalPrizeMoney);
+        assertGt(endingTimestamp, startingTimestamp + s_lotteryDurationSeconds);
     }
 }

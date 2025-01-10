@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {VRFConsumerBaseV2Plus} from "@chainlink/contracts/src/v0.8/vrf/dev/VRFConsumerBaseV2Plus.sol";
 import {VRFV2PlusClient} from "@chainlink/contracts/src/v0.8/vrf/dev/libraries/VRFV2PlusClient.sol";
 import {AutomationCompatibleInterface} from "@chainlink/contracts/src/v0.8/automation/AutomationCompatible.sol";
+import {console2 as console} from "forge-std/Script.sol";
 
 /**
  * @title A sample Raffle contract
@@ -31,7 +32,7 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
     bool private immutable i_enableNativePayment; // usually `false`, to pay in LINK
 
     /* STATE VARIABLES */
-    uint256 private s_lastRecordedTimeStamp; // The last timestamp that was recorded
+    uint256 private s_lastRecordedTimestamp; // The last timestamp that was recorded
     address payable private s_recentRaffleWinner; // Most recent winner of the raffle
     RaffleState private s_raffleState; // Current state of the Raffle, whether its OPEN or other states
     address payable[] private s_listOfPlayers; // List of players that entered the raffle - initialized to empty array
@@ -71,7 +72,7 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
         i_subscriptionId = _subscriptionId;
         i_callbackGasLimit = _callbackGasLimit;
         i_enableNativePayment = _enableNativePayment;
-        s_lastRecordedTimeStamp = block.timestamp; // Initialized to when the contract is first deployed (first block)
+        s_lastRecordedTimestamp = block.timestamp; // Initialized to when the contract is first deployed (first block)
         s_raffleState = RaffleState.OPEN; // Raffle state should be OPEN when contract is first deployed
     }
 
@@ -105,7 +106,7 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
         override
         returns (bool upkeepNeeded, bytes memory /* performData */ )
     {
-        bool timeHasPassed = ((block.timestamp - s_lastRecordedTimeStamp) >= i_lotteryDurationSeconds);
+        bool timeHasPassed = ((block.timestamp - s_lastRecordedTimestamp) >= i_lotteryDurationSeconds);
         bool isOpen = s_raffleState == RaffleState.OPEN;
         bool raffleHasBalance = (address(this).balance > 0);
         bool raffleHasPlayers = (s_listOfPlayers.length > 0);
@@ -114,6 +115,7 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
     }
 
     /**
+     * `performUpkeep` function, aka, transaction to request a VRF random number
      * 1. This function needs to get a random number from VRF
      * 2. Then it needs to use the random number to pick out a winner
      * 3. Finally, it needs to be called automatically, at periodic intervals
@@ -155,14 +157,20 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
         emit RandomWordRequested(requestId);
     }
 
-    function fulfillRandomWords(uint256, /* requestId */ uint256[] calldata randomWords) internal override {
-        // This function is going to be called by the VRF service
-        uint256 indexOfWinner = randomWords[0] % s_listOfPlayers.length;
+    /**
+     * This function is going to be called by the VRF service right after the
+     * `performUpkeep` function makes a transaction, which requests a random word.
+     * @param //requestId - ignored
+     * @param _randomWords Use the provided random number to pick a winner
+     */
+    function fulfillRandomWords(uint256, /* requestId */ uint256[] calldata _randomWords) internal override {
+        console.log("Caller:", address(msg.sender));
+        uint256 indexOfWinner = _randomWords[0] % s_listOfPlayers.length;
         address payable raffleWinner = s_listOfPlayers[indexOfWinner];
 
         s_recentRaffleWinner = raffleWinner;
         s_listOfPlayers = new address payable[](0); // First, reset list of Raffle players.
-        s_lastRecordedTimeStamp = block.timestamp; // Then, update the last recorded timestamp. Finally, reopen raffle.
+        s_lastRecordedTimestamp = block.timestamp; // Then, update the last recorded timestamp. Finally, reopen raffle.
         s_raffleState = RaffleState.OPEN; // Reopen Raffle after the winner has been chosen, but before the prize is sent
         emit RaffleWinnerPicked(raffleWinner);
 
@@ -186,5 +194,13 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
 
     function getRaffleState() external view returns (RaffleState) {
         return s_raffleState;
+    }
+
+    function getLastRecordedTimestamp() external view returns (uint256) {
+        return s_lastRecordedTimestamp;
+    }
+
+    function getRecentRaffleWinner() external view returns (address) {
+        return s_recentRaffleWinner;
     }
 }
