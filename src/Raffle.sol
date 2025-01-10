@@ -39,6 +39,7 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
     /* EVENTS */
     event NewPlayerHasEnteredRaffle(address indexed _newPlayer);
     event RaffleWinnerPicked(address indexed _raffleWinner);
+    event RandomWordRequested(uint256 indexed _requestId);
 
     /* ERRORS */
     error Raffle__NotEnoughEthToEnterRaffle();
@@ -147,7 +148,11 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
             numWords: NUM_WORDS,
             extraArgs: VRFV2PlusClient._argsToBytes(VRFV2PlusClient.ExtraArgsV1({nativePayment: i_enableNativePayment}))
         });
-        s_vrfCoordinator.requestRandomWords(request);
+        uint256 requestId = s_vrfCoordinator.requestRandomWords(request);
+
+        // this is redundant because `requestRandomWords` also emits an event
+        // with a non-indexed `requestId` parameter
+        emit RandomWordRequested(requestId);
     }
 
     function fulfillRandomWords(uint256, /* requestId */ uint256[] calldata randomWords) internal override {

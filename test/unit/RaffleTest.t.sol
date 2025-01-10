@@ -27,10 +27,9 @@ contract RaffleTest is Test {
 
     /* MODIFIERS */
     /**
-     * This modifier simulates calling the `performUpkeep` function to put the Raffle
-     * state to `CALCULATING`, so that new players cannot enter while in that state.
-     * We ensure that `checkUpkeep` conditions are met:
-     * First, warp the current `block.timestamp` to a future value of
+     * This modifier ensures that all `checkUpkeep` conditions are met:
+     * First, Alice the Raffle Player enters the Raffle with an entrance fee.
+     * Then, we warp the current `block.timestamp` to a future value of
      * `block.timestamp + s_lotteryDurationSeconds + 1` so that the condition
      * for `timeHasPassed` is guaranteed to be met with 1 additional second:
      * timeHasPassed = block.timestamp + s_lotteryDurationSeconds + 1 - block.timestamp
@@ -38,12 +37,11 @@ contract RaffleTest is Test {
      *               = true
      * Also, simulate forwarding the block number by 1 with `vm.roll`.
      */
-    modifier raffleStateCalculating() {
-        vm.prank(s_alice);
-        s_raffle.enterRaffle{value: s_raffleEntranceFee}(); // We have entered the raffle,
+    modifier upkeepConditionsMet() {
+        vm.prank(s_alice); // Mock player Alice...
+        s_raffle.enterRaffle{value: s_raffleEntranceFee}(); // has entered the raffle,
         vm.warp(block.timestamp + s_lotteryDurationSeconds + 1); // time has passed,
         vm.roll(block.number + 1); // and the block has been incremented.
-        s_raffle.performUpkeep(""); // Now, perform upkeep to set the Raffle state to CALCULATING
         _;
     }
 
@@ -68,7 +66,7 @@ contract RaffleTest is Test {
     /**
      * assert(s_raffle.getRaffleState() == Raffle.RaffleState.OPEN); //*works
      * assertEq(s_raffle.getRaffleState(), Raffle.RaffleState.OPEN); //?errors
-     * Why this errors? Because `assertEq` does not have an overload for an
+     * Why this errors? Because `assertEq` does not have an overload for a custom
      * enum type of `RaffleState`. It only has overloads for uint256, bytes, etc.
      */
     function test_RaffleInitializes_InOpenState() public view {
@@ -102,23 +100,27 @@ contract RaffleTest is Test {
         s_raffle.enterRaffle{value: s_raffleEntranceFee}(); // Assert
     }
 
-    function test_PlayerCannotEnterRaffle_WhenRaffleStateIsCalculating() public raffleStateCalculating {
-        // Arrange - raffleStateCalculating: set RaffleState to CALCULATING
+    /**
+     * This test simulates calling the `performUpkeep` function to put the Raffle
+     * state to `CALCULATING`, so that new players cannot enter while in that state.
+     */
+    function test_PlayerCannotEnterRaffle_WhenRaffleStateIsCalculating() public upkeepConditionsMet {
+        s_raffle.performUpkeep(""); // Arrange
         vm.expectRevert(Raffle.Raffle__RaffleNotOpen.selector); // Act
         vm.prank(s_alice);
         s_raffle.enterRaffle{value: s_raffleEntranceFee}(); // Assert
     }
 
     /* TESTS FOR `checkUpkeep` */
-    function test_CheckUpkeepReturnsFalse_WhenRaffleStateIsCalculating() public raffleStateCalculating {
-        // Arrange - raffleStateCalculating: set RaffleState to CALCULATING
+    function test_CheckUpkeepReturnsFalse_WhenRaffleStateIsCalculating() public upkeepConditionsMet {
+        s_raffle.performUpkeep("");
         (bool upkeepNeeded,) = s_raffle.checkUpkeep(""); // Act
         assertEq(upkeepNeeded, false); // Assert
     }
 
     /**
      * Forward to a future time by `s_lotteryDurationSeconds + 1` and increment
-     * block by 1, but no player enters the raffle. This will ensure raffle
+     * block by 1, but no player will enter the raffle. This will ensure raffle
      * balance to remain at 0.
      */
     function test_CheckUpkeepReturnsFalse_IfRaffleHasNoBalance() public {
@@ -135,25 +137,15 @@ contract RaffleTest is Test {
         assertEq(upkeepNeeded, false); // Assert
     }
 
-    function test_CheckUpkeepReturnsTrue_WhenParametersAreAllTrue() public {
-        // Arrange
-        vm.prank(s_alice);
-        s_raffle.enterRaffle{value: s_raffleEntranceFee}();
-        vm.warp(block.timestamp + s_lotteryDurationSeconds + 1);
-        vm.roll(block.number + 1);
-
+    function test_CheckUpkeepReturnsTrue_WhenParametersAreAllTrue() public upkeepConditionsMet {
+        // Arrange -
         (bool upkeepNeeded,) = s_raffle.checkUpkeep(""); // Act
         assertEq(upkeepNeeded, true); // Assert
     }
 
     /* TESTS FOR `performUpkeep` */
-    function test_PerformUpkeepCanOnlyRun_IfCheckUpkeepIsTrue() public {
-        // Arrange
-        vm.prank(s_alice);
-        s_raffle.enterRaffle{value: s_raffleEntranceFee}();
-        vm.warp(block.timestamp + s_lotteryDurationSeconds + 1);
-        vm.roll(block.number + 1);
-
+    function test_PerformUpkeepCanOnlyRun_IfCheckUpkeepIsTrue() public upkeepConditionsMet {
+        // Arrange -
         // Act - call the `performUpkeep` function with ABI encoding
         bytes memory encodedPerformUpkeep = abi.encodeWithSignature("performUpkeep(bytes)", "");
         (bool success,) = address(s_raffle).call(encodedPerformUpkeep);
@@ -174,7 +166,10 @@ contract RaffleTest is Test {
             abi.encodeWithSelector(Raffle.Raffle__UpkeepNotNeeded.selector, currentBalance, numPlayers, raffleState)
         );
 
-        // Assert
-        s_raffle.performUpkeep("");
+        s_raffle.performUpkeep(""); // Assert
+    }
+
+    function test() public {
+        // Arrange
     }
 }
