@@ -64,7 +64,7 @@ contract RaffleTest is Test {
         vm.deal(s_alice, STARTING_PLAYER_BALANCE);
     }
 
-    /* TESTS FOR ENTERING RAFFLE */
+    /* TESTS FOR `enterRaffle` */
     /**
      * assert(s_raffle.getRaffleState() == Raffle.RaffleState.OPEN); //*works
      * assertEq(s_raffle.getRaffleState(), Raffle.RaffleState.OPEN); //?errors
@@ -109,7 +109,7 @@ contract RaffleTest is Test {
         s_raffle.enterRaffle{value: s_raffleEntranceFee}(); // Assert
     }
 
-    /* TESTS FOR CHECKING UPKEEP */
+    /* TESTS FOR `checkUpkeep` */
     function test_CheckUpkeepReturnsFalse_WhenRaffleStateIsCalculating() public raffleStateCalculating {
         // Arrange - raffleStateCalculating: set RaffleState to CALCULATING
         (bool upkeepNeeded,) = s_raffle.checkUpkeep(""); // Act
@@ -144,5 +144,37 @@ contract RaffleTest is Test {
 
         (bool upkeepNeeded,) = s_raffle.checkUpkeep(""); // Act
         assertEq(upkeepNeeded, true); // Assert
+    }
+
+    /* TESTS FOR `performUpkeep` */
+    function test_PerformUpkeepCanOnlyRun_IfCheckUpkeepIsTrue() public {
+        // Arrange
+        vm.prank(s_alice);
+        s_raffle.enterRaffle{value: s_raffleEntranceFee}();
+        vm.warp(block.timestamp + s_lotteryDurationSeconds + 1);
+        vm.roll(block.number + 1);
+
+        // Act - call the `performUpkeep` function with ABI encoding
+        bytes memory encodedPerformUpkeep = abi.encodeWithSignature("performUpkeep(bytes)", "");
+        (bool success,) = address(s_raffle).call(encodedPerformUpkeep);
+
+        // Assert
+        assertEq(success, true);
+    }
+
+    function test_PerformUpkeepReverts_IfCheckUpkeepIsFalse() public {
+        // Arrange - set up error parameters
+        uint256 currentBalance = 0;
+        uint256 numPlayers = 0;
+        Raffle.RaffleState raffleState = s_raffle.getRaffleState();
+
+        // Act - without any of the checkUpkeep conditions being true
+        // Don't use `call` when expecting a revert from a custom error
+        vm.expectRevert(
+            abi.encodeWithSelector(Raffle.Raffle__UpkeepNotNeeded.selector, currentBalance, numPlayers, raffleState)
+        );
+
+        // Assert
+        s_raffle.performUpkeep("");
     }
 }

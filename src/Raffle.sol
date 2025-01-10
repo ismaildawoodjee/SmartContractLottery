@@ -49,11 +49,11 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
     /* CONSTRUCTOR */
     /**
      * Inherits from VRFConsumerBaseV2Plus, which has its own constructor, so we
-     * need to implement its parameters too
+     * need to implement its parameters too.
      * @param _vrfCoordinator address of VRFCoordinator contract
      * We pass this parameter _vrfCoordinator from Raffle contract's constructor
      * to VRFConsumerBaseV2Plus's constructor.
-     * This way we also inherit the s_vrfCoordinator variable
+     * This way we also inherit the s_vrfCoordinator variable.
      */
     constructor(
         uint256 _raffleEntranceFee,
@@ -95,7 +95,7 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
      * @param - //checkData //? `calldata` type cannot be used. Why?
      * @return upkeepNeeded (bool) - true if it's time to restart the lottery
      * By returning `bool upkeepNeeded`, the return variable is already
-     * initialized to `false` and we can use it within the function
+     * initialized to `false` and we can use it within the function.
      * @return - //performData
      */
     function checkUpkeep(bytes memory /* checkData */ )
