@@ -23,10 +23,13 @@ contract AddConsumer is Script {
     }
 
     function callAddConsumer(address _contractToAddToVRF, address _vrfCoordinator, uint256 _subscriptionId) public {
-        console.log("Adding consumer to VRF Coordinator:", _contractToAddToVRF);
-        console.log("Using VRFCoordinator:", _vrfCoordinator);
-        console.log("On chain ID:", block.chainid);
-        vm.startBroadcast();
+        // Only the subscription owner can add a consumer
+        // Testing on --fork-url fails because the address calling the `addConsumer`
+        // function is not the subscription owner. Get the subscription owner by
+        // calling the `getSubscription` function from VRFCoordinator
+        (,,, address subscriptionOwner,) = VRFCoordinatorV2_5Mock(_vrfCoordinator).getSubscription(_subscriptionId);
+        console.log("[INFO] [AddConsumer::callAddConsumer] Subscription owner is:", subscriptionOwner);
+        vm.startBroadcast(subscriptionOwner);
         VRFCoordinatorV2_5Mock(_vrfCoordinator).addConsumer(_subscriptionId, _contractToAddToVRF);
         vm.stopBroadcast();
     }

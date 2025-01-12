@@ -21,16 +21,16 @@ contract CreateSubscription is Script {
 
     // This is more specific, where we can provide our own vrfCoordinator
     function callCreateSubscription(address _vrfCoordinator) public returns (uint256, address) {
-        console.log("Creating subscription on chain ID:", block.chainid);
-
         // Start of a transaction where we create a subscription on Chainlink
         // and the Metamask wallet opens up to confirm the creation of a subscription
         vm.startBroadcast();
+        // For Fork-URL: subscription owner is the Metamask wallet that creates the subscription
+        // For local deployment: subscription owner is Foundry default address
         uint256 subscriptionId = VRFCoordinatorV2_5Mock(_vrfCoordinator).createSubscription();
+        (,,, address subscriptionOwner,) = VRFCoordinatorV2_5Mock(_vrfCoordinator).getSubscription(subscriptionId);
+        console.log("[INFO] [CreateSubscription::callCreateSubscription] Subscription owner is:", subscriptionOwner);
         vm.stopBroadcast();
 
-        console.log("Your subscription ID is:", subscriptionId);
-        console.log("Please update the subscription ID in your HelperConfig.s.sol");
         return (subscriptionId, _vrfCoordinator); //? why return vrfCoordinator
     }
 }

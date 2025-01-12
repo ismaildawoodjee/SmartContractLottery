@@ -164,7 +164,6 @@ contract Raffle is VRFConsumerBaseV2Plus, AutomationCompatibleInterface {
      * @param _randomWords Use the provided random number to pick a winner
      */
     function fulfillRandomWords(uint256, /* requestId */ uint256[] calldata _randomWords) internal override {
-        console.log("Caller:", address(msg.sender));
         uint256 indexOfWinner = _randomWords[0] % s_listOfPlayers.length;
         address payable raffleWinner = s_listOfPlayers[indexOfWinner];
 

@@ -7,9 +7,12 @@ import {HelperConfig} from "script/HelperConfig.s.sol";
 import {CreateSubscription} from "script/interactions/CreateSubscription.s.sol";
 import {FundSubscription} from "script/interactions/FundSubscription.s.sol";
 import {AddConsumer} from "script/interactions/AddConsumer.s.sol";
+import {VRFCoordinatorV2_5Mock} from "@chainlink/contracts/src/v0.8/vrf/mocks/VRFCoordinatorV2_5Mock.sol";
 
 contract DeployRaffle is Script {
-    constructor() {}
+    function run() public {
+        deployRaffleContract();
+    }
 
     /**
      * This function handles the deployment process. If the deployment is local,
@@ -35,8 +38,12 @@ contract DeployRaffle is Script {
             networkConfig.vrfCoordinator, networkConfig.subscriptionId, networkConfig.linkTokenAddress
         );
 
-        // Before adding a consumer, we need to deploy the consumer first
-        vm.startBroadcast(); // Start transactions by deploying the Raffle
+        // Before adding the Raffle contract as a consumer, we need to deploy it first
+        // Start a transaction to deploy the Raffle contract
+        (,,, address subscriptionOwner,) =
+            VRFCoordinatorV2_5Mock(networkConfig.vrfCoordinator).getSubscription(networkConfig.subscriptionId);
+        console.log("[INFO] [DeployRaffle::deployRaffleContract] Subscription owner is:", subscriptionOwner);
+        vm.startBroadcast(subscriptionOwner);
         Raffle raffle = new Raffle(
             networkConfig.raffleEntranceFee,
             networkConfig.lotteryDurationSeconds,
@@ -53,9 +60,5 @@ contract DeployRaffle is Script {
         consumerAdder.callAddConsumer(address(raffle), networkConfig.vrfCoordinator, networkConfig.subscriptionId);
 
         return (raffle, helperConfig);
-    }
-
-    function run() public {
-        deployRaffleContract();
     }
 }

@@ -49,6 +49,11 @@ contract RaffleTest is Test, CodeConstants {
         _;
     }
 
+    modifier skipForkTesting() {
+        if (block.chainid != LOCAL_CHAIN_ID) vm.skip(true);
+        _;
+    }
+
     /* SETUP AND DEPLOYMENT FUNCTION */
     function setUp() external {
         DeployRaffle deployer = new DeployRaffle();
@@ -219,6 +224,7 @@ contract RaffleTest is Test, CodeConstants {
     function test_FulfillRandomWordsCanOnlyBeCalled_AfterPerformUpkeep(uint256 randomRequestId)
         public
         upkeepConditionsMet
+        skipForkTesting
     {
         // Arrange - we expect an InvalidRequest error when requestId doesn't exist
         vm.expectRevert(VRFCoordinatorV2_5Mock.InvalidRequest.selector);
@@ -234,7 +240,11 @@ contract RaffleTest is Test, CodeConstants {
         VRFCoordinatorV2_5Mock(s_vrfCoordinator).fulfillRandomWords(randomRequestId, address(s_raffle));
     }
 
-    function test_FulfillRandomWords_PicksAWinner_ResetsRaffle_AndSendsMoney() public upkeepConditionsMet {
+    function test_FulfillRandomWords_PicksAWinner_ResetsRaffle_AndSendsMoney()
+        public
+        upkeepConditionsMet
+        skipForkTesting
+    {
         // Arrange - set up three more raffle players and record the starting timestamp
         uint256 numAdditionalPlayers = 3; // Total number of players: 4
         uint256 startingIndex = 1;

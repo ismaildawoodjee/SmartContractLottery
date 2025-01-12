@@ -21,10 +21,6 @@ contract FundSubscription is Script, CodeConstants {
     }
 
     function callFundSubscription(address _vrfCoordinator, uint256 _subscriptionId, address _linkTokenAddress) public {
-        console.log("Funding subscription:", _subscriptionId);
-        console.log("Using vrfCoordinator:", _vrfCoordinator);
-        console.log("On chain ID:", block.chainid);
-
         // This is the start of a transaction, where we fund the subscription
         // that we created, and the Metamask wallet opens up for us to confirm
         // adding funds to the subscription
