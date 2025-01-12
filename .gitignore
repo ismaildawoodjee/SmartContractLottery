@@ -12,8 +12,9 @@ broadcast/
 docs/
 
 # Dotenv file
-*.env
-*.password
+.env
+sepolia.password
+anvil.password
 
 # Example files
 *.e.sol
